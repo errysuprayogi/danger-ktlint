@@ -81,7 +81,7 @@ module Danger
               next unless targets.include?(file_path)
 
               message = "#{file_html_link(file_path, error['line'])}: #{error['message']}"
-              fail(message)
+              warn(message)
               unless limit.nil?
                 count += 1
                 if count >= limit
@@ -104,7 +104,7 @@ module Danger
               next unless targets.include?(file_path)
               message = error['message']
               line = error['line']
-              fail(message, file: result['file'], line: line)
+              warn(message, file: result['file'], line: line)
               unless limit.nil?
                 count += 1
                 if count >= limit
@@ -149,7 +149,7 @@ module Danger
     end
 
     def ktlint_exists?
-      system 'which ktlint > /dev/null 2>&1' 
+      system 'which ktlint > /dev/null 2>&1'
     end
 
     def ktlint_results(targets)
