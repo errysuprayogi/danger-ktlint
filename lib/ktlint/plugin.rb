@@ -17,7 +17,11 @@ module Danger
     # TODO: Lint all files if `filtering: false`
     attr_accessor :filtering
 
+    # Only shows messages for the modified lines.
+    attr_accessor :filtering_lines
+
     attr_accessor :skip_lint, :report_file, :report_files_pattern
+
 
     def limit
       @limit ||= nil
@@ -41,8 +45,8 @@ module Danger
         raise UnsupportedServiceError.new
       end
 
-      targets = target_files(git.added_files + git.modified_files)
-
+      # targets = target_files(git.added_files + git.modified_files)
+      targets = target_files((git.modified_files - git.deleted_files) + git.added_files)
       results = ktlint_results(targets)
       if results.nil? || results.empty?
         return
@@ -101,9 +105,14 @@ module Danger
           ktlint_result.each do |result|
             result['errors'].each do |error|
               file_path = relative_file_path(result['file'])
-              next unless targets.include?(file_path)
+              # next unless targets.include?(file_path)
+              next unless (!filtering && !filtering_lines) || (targets.include? file_path)
               message = error['message']
               line = error['line']
+              if filtering_lines
+                added_lines = parse_added_line_numbers(git.diff[file_path].patch)
+                next unless added_lines.include? line
+              end
               warn(message, file: result['file'], line: line)
               unless limit.nil?
                 count += 1
@@ -117,6 +126,31 @@ module Danger
       end
     end
 
+    # Parses git diff of a file and retuns an array of added line numbers.
+    def parse_added_line_numbers(diff)
+      current_line_number = nil
+      added_line_numbers = []
+      diff_lines = diff.strip.split("\n")
+      diff_lines.each_with_index do |line, index|
+        if m = /\+(\d+)(?:,\d+)? @@/.match(line)
+          # (e.g. @@ -32,10 +32,7 @@)
+          current_line_number = Integer(m[1])
+        else
+          unless current_line_number.nil?
+            if line.start_with?("+")
+              # added line
+              added_line_numbers.push current_line_number
+              current_line_number += 1
+            elsif !line.start_with?("-")
+              # unmodified line
+              current_line_number += 1
+            end
+          end
+        end
+      end
+      added_line_numbers
+    end
+
     def target_files(changed_files)
       changed_files.select do |file|
         file.end_with?('.kt')
@@ -125,7 +159,9 @@ module Danger
 
     # Make it a relative path so it can compare it to git.added_files
     def relative_file_path(file_path)
-      file_path.gsub(/#{pwd}\//, '')
+      # file_path.gsub(/#{pwd}\//, '')
+      dir = "#{Dir.pwd}/"
+      file_path.gsub(dir, "")
     end
 
     private
