@@ -113,7 +113,7 @@ module Danger
                 added_lines = parse_added_line_numbers(git.diff[file_path].patch)
                 next unless added_lines.include? line
               end
-              warn(message, file: result['file'], line: line)
+              warn(message, file: file_path, line: line)
               unless limit.nil?
                 count += 1
                 if count >= limit
