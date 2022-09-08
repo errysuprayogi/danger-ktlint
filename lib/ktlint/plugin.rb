@@ -20,6 +20,12 @@ module Danger
     # Only shows messages for the modified lines.
     attr_accessor :filtering_lines
 
+    # Git diff file for auto suggestion
+    attr_accessor :correction_file
+
+    # Suggestion
+    attr_accessor :correction
+
     attr_accessor :skip_lint, :report_file, :report_files_pattern
 
 
@@ -106,13 +112,20 @@ module Danger
             result['errors'].each do |error|
               file_path = relative_file_path(result['file'])
               next unless (!filtering && !filtering_lines) || (targets.include? file_path)
-              message = error['message']
+              message = ":warning: "+error['message']+"\n```suggestion\nFoo\n```"
               line = error['line']
               if filtering_lines
                 added_lines = parse_added_line_numbers(git.diff[file_path].patch)
                 next unless added_lines.include? line
               end
-              warn(message, file: file_path, line: line)
+              if correction
+                printf("run correction "+file_path)
+                system "./ktlint #{file_path}"
+                diff = git.diff[file_path].patch
+                printf(diff)
+              end
+              # warn(message, file: file_path, line: line)
+              markdown(message, file: file_path, line: line)
               unless limit.nil?
                 count += 1
                 if count >= limit
@@ -123,6 +136,31 @@ module Danger
           end
         end
       end
+    end
+
+    #Parse git diff of a correction file and return an array of string suggestion code
+    def parse_correction_file(diff)
+      current_line_number = nil
+      added_line_numbers = []
+      diff_lines = diff.strip.split("\n")
+      diff_lines.each_with_index do |line, index|
+        if m = /\+(\d+)(?:,\d+)? @@/.match(line)
+          # (e.g. @@ -32,10 +32,7 @@)
+          current_line_number = Integer(m[1])
+        else
+          unless current_line_number.nil?
+            if line.start_with?("+")
+              # added line
+              added_line_numbers.push current_line_number
+              current_line_number += 1
+            elsif !line.start_with?("-")
+              # unmodified line
+              current_line_number += 1
+            end
+          end
+        end
+      end
+      added_line_numbers
     end
 
     # Parses git diff of a file and retuns an array of added line numbers.
