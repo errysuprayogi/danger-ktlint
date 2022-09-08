@@ -106,7 +106,7 @@ module Danger
             result['errors'].each do |error|
               file_path = relative_file_path(result['file'])
               next unless (!filtering && !filtering_lines) || (targets.include? file_path)
-              message = error['message']
+              message = error['message']+"\n```suggestion\nFoo\n```"
               line = error['line']
               if filtering_lines
                 added_lines = parse_added_line_numbers(git.diff[file_path].patch)
