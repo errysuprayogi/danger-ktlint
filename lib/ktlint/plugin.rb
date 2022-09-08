@@ -120,7 +120,7 @@ module Danger
               end
               if correction
                 printf("run correction "+file_path)
-                system "./ktlin #{file_path}"
+                system "./ktlint #{file_path}"
                 diff = git.diff[file_path].patch
                 printf(diff)
               end
