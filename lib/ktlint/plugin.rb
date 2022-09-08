@@ -119,8 +119,8 @@ module Danger
                 next unless added_lines.include? line
               end
               if correction
-                printf("run correction "+file_path)
-                system "./ktlint #{file_path}"
+                printf("run correction "+file_path+"\n")
+                system "./ktlint --format #{file_path}"
                 diff = git.diff[file_path].patch
                 printf(diff)
               end
