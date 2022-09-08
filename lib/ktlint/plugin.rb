@@ -105,7 +105,6 @@ module Danger
           ktlint_result.each do |result|
             result['errors'].each do |error|
               file_path = relative_file_path(result['file'])
-              # next unless targets.include?(file_path)
               next unless (!filtering && !filtering_lines) || (targets.include? file_path)
               message = error['message']
               line = error['line']
@@ -159,7 +158,6 @@ module Danger
 
     # Make it a relative path so it can compare it to git.added_files
     def relative_file_path(file_path)
-      # file_path.gsub(/#{pwd}\//, '')
       dir = "#{Dir.pwd}/"
       file_path.gsub(dir, "")
     end
