@@ -20,10 +20,7 @@ module Danger
     # Only shows messages for the modified lines.
     attr_accessor :filtering_lines
 
-    # Git diff file for auto suggestion
-    attr_accessor :correction_file
-
-    # Suggestion
+    # Enable ktlint auto correction and put suggestion on inline file change
     attr_accessor :correction
 
     attr_accessor :skip_lint, :report_file, :report_files_pattern
@@ -51,7 +48,6 @@ module Danger
         raise UnsupportedServiceError.new
       end
 
-      # targets = target_files(git.added_files + git.modified_files)
       targets = target_files((git.modified_files - git.deleted_files) + git.added_files)
       results = ktlint_results(targets)
       if results.nil? || results.empty?
@@ -109,23 +105,27 @@ module Danger
         count = 0
         ktlint_results.each do |ktlint_result|
           ktlint_result.each do |result|
+            file_name = relative_file_path(result['file'])
+            if correction
+              file_path = "#{Dir.pwd}/#{file_name}"
+              printf("run correction "+file_path+"\n")
+              system "./ktlint --format #{file_path}"
+              diff = `git diff #{file_path}`
+              changes = parse_correction(diff)
+            end
             result['errors'].each do |error|
-              file_path = relative_file_path(result['file'])
-              next unless (!filtering && !filtering_lines) || (targets.include? file_path)
-              message = ":warning: "+error['message']+"\n```suggestion\nFoo\n```"
+              next unless (!filtering && !filtering_lines) || (targets.include? file_name)
+              message = error['message']
               line = error['line']
               if filtering_lines
-                added_lines = parse_added_line_numbers(git.diff[file_path].patch)
+                added_lines = parse_added_line_numbers(git.diff[file_name].patch)
                 next unless added_lines.include? line
               end
-              if correction
-                printf("run correction "+file_path+"\n")
-                system "./ktlint --format #{file_path}"
-                diff = git.diff[file_path].patch
-                printf(diff)
-              end
-              # warn(message, file: file_path, line: line)
-              markdown(message, file: file_path, line: line)
+              # if correction and not changes[line].nil?
+              markdown(":warning: #{message}\n```suggestion\n#{changes[line]}\n```", file: file_name, line: line)
+              # else
+              #   warn(message, file: file_name, line: line)
+              # end
               unless limit.nil?
                 count += 1
                 if count >= limit
@@ -139,9 +139,9 @@ module Danger
     end
 
     #Parse git diff of a correction file and return an array of string suggestion code
-    def parse_correction_file(diff)
+    def parse_correction(diff)
       current_line_number = nil
-      added_line_numbers = []
+      changes = Hash.new
       diff_lines = diff.strip.split("\n")
       diff_lines.each_with_index do |line, index|
         if m = /\+(\d+)(?:,\d+)? @@/.match(line)
@@ -151,8 +151,9 @@ module Danger
           unless current_line_number.nil?
             if line.start_with?("+")
               # added line
-              added_line_numbers.push current_line_number
               current_line_number += 1
+              changes[current_line_number] = line[1..line.length]
+              p "#{index} : #{changes[current_line_number]} -> #{current_line_number}"
             elsif !line.start_with?("-")
               # unmodified line
               current_line_number += 1
@@ -160,7 +161,7 @@ module Danger
           end
         end
       end
-      added_line_numbers
+      changes
     end
 
     # Parses git diff of a file and retuns an array of added line numbers.
