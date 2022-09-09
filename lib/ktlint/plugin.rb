@@ -25,7 +25,6 @@ module Danger
 
     attr_accessor :skip_lint, :report_file, :report_files_pattern
 
-
     def limit
       @limit ||= nil
     end
@@ -103,29 +102,55 @@ module Danger
     def send_inline_comments(ktlint_results, targets)
       catch(:loop_break) do
         count = 0
+        warning_count = 0
         ktlint_results.each do |ktlint_result|
           ktlint_result.each do |result|
             file_name = relative_file_path(result['file'])
-            if correction
+            if correction and ktlint_exists? and file_name.end_with?('.kt')
               file_path = "#{Dir.pwd}/#{file_name}"
-              printf("run correction "+file_path+"\n")
-              system "./ktlint --format #{file_path}"
+              printf("run correction " + file_path + "\n")
+              system "ktlint --format #{file_path}"
               diff = `git diff #{file_path}`
               changes = parse_correction(diff)
             end
+
+            filtered_errors = Hash.new
+            message = Array.new
             result['errors'].each do |error|
               next unless (!filtering && !filtering_lines) || (targets.include? file_name)
-              message = error['message']
               line = error['line']
+              if filtered_errors.has_key? line
+                message.push error['message'] unless message.include? error['message']
+              else
+                message = [error['message']]
+              end
+              filtered_errors[line] = message * " and "
+            end
+
+            line_check = 0
+            filtered_errors.each do |line, error|
+              found = false
+              suggestion = ""
+              start_line = line
+              last_line = line
+              changes.each do |key, val|
+                if key.include? line
+                  suggestion = val
+                  start_line = key[0]
+                  last_line = key.last
+                  found = true
+                end
+              end
+              message = (correction and found) ? "#{generate_table(error)}```suggestion\n#{suggestion}\n```" : error
               if filtering_lines
                 added_lines = parse_added_line_numbers(git.diff[file_name].patch)
-                next unless added_lines.include? line
+                next unless added_lines.include? start_line
               end
-              # if correction and not changes[line].nil?
-              markdown(":warning: #{message}\n```suggestion\n#{changes[line]}\n```", file: file_name, line: line)
-              # else
-              #   warn(message, file: file_name, line: line)
-              # end
+              warning_count += 1
+              next if line_check == start_line
+              options = { start_line: start_line, line: last_line, side: "RIGHT", start_side: "RIGHT" }
+              send((correction and found) ? "markdown" : "warn", message, file: file_name, line: start_line, extras: options)
+              line_check = start_line
               unless limit.nil?
                 count += 1
                 if count >= limit
@@ -135,31 +160,65 @@ module Danger
             end
           end
         end
+        if warning_count > 0
+          warn("We found code style issue in your changes please check the suggestion or re-format the code using [Ktlint](https://pinterest.github.io/ktlint/ \"Ktlint Homepage\")")
+        end
       end
+    end
+
+    def generate_table(error)
+      table = "<table>
+                <tbody>
+                  <tr>
+                    <td>:warning:</td>
+                    <td width=\"100%\">#{error}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+"
+      table
     end
 
     #Parse git diff of a correction file and return an array of string suggestion code
     def parse_correction(diff)
       current_line_number = nil
+      modified_line = nil
+      modified_code = nil
       changes = Hash.new
       diff_lines = diff.strip.split("\n")
       diff_lines.each_with_index do |line, index|
-        if m = /\+(\d+)(?:,\d+)? @@/.match(line)
+        if m = /\-(\d+)(?:,\d+)?/.match(line)
           # (e.g. @@ -32,10 +32,7 @@)
           current_line_number = Integer(m[1])
+          modified_code = []
+          modified_line = []
         else
           unless current_line_number.nil?
-            if line.start_with?("+")
-              # added line
+            if line.start_with?('-')
+              # deleted line
+              modified_code = []
+              modified_line.push current_line_number unless modified_line.include? current_line_number
               current_line_number += 1
-              changes[current_line_number] = line[1..line.length]
-              p "#{index} : #{changes[current_line_number]} -> #{current_line_number}"
-            elsif !line.start_with?("-")
+            elsif line.start_with?('+')
+              # added line
+              modified_code.push line[1..line.length]
+              line_number = (current_line_number - 1)
+              modified_line.push line_number unless modified_line.include? line_number
+            else
               # unmodified line
+              unless not (modified_line.length > 0)
+                changes[modified_line] = modified_code * "\n"
+                modified_line = []
+                modified_code = []
+              end
               current_line_number += 1
             end
           end
         end
+      end
+      changes.each do |result|
+        p result
       end
       changes
     end
