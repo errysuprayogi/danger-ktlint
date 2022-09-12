@@ -130,7 +130,7 @@ module Danger
             line_check = 0
             filtered_errors.each do |line, error|
               found = false
-              suggestion = ""
+              suggestion = nil
               start_line = line
               last_line = line
               changes.each do |key, val|
@@ -141,15 +141,14 @@ module Danger
                   found = true
                 end
               end
-              message = (correction and found) ? "#{generate_table(error)}```suggestion\n#{suggestion}\n```" : error
               if filtering_lines
                 added_lines = parse_added_line_numbers(git.diff[file_name].patch)
-                next unless added_lines.include? start_line
+                next unless added_lines.include? line
               end
               warning_count += 1
               next if line_check == start_line
               options = { start_line: start_line, line: last_line, side: "RIGHT", start_side: "RIGHT" }
-              send((correction and found) ? "markdown" : "warn", message, file: file_name, line: start_line, extras: options)
+              warn(error, file: file_name, line: line, extras: options, comment: suggestion)
               line_check = start_line
               unless limit.nil?
                 count += 1
