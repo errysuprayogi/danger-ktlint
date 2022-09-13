@@ -99,6 +99,14 @@ module Danger
       end
     end
 
+    def error_messages(errors, lines)
+      result = []
+      errors.each do |hash|
+        result << hash["message"] if lines.include? hash["line"] and not result.include? hash["message"]
+      end
+      result * " and "
+    end
+
     def send_inline_comments(ktlint_results, targets)
       catch(:loop_break) do
         count = 0
@@ -128,8 +136,7 @@ module Danger
             end
 
             line_check = 0
-            filtered_errors.each do |line, error|
-              found = false
+            filtered_errors.each do |line, e|
               suggestion = nil
               start_line = line
               last_line = line
@@ -138,14 +145,15 @@ module Danger
                   suggestion = val
                   start_line = key[0]
                   last_line = key.last
-                  found = true
                 end
               end
               if filtering_lines
                 added_lines = parse_added_line_numbers(git.diff[file_name].patch)
-                next unless added_lines.include? line
+                # next unless added_lines.include? start_line and added_lines.include? last_line
+                next unless added_lines.include? start_line
               end
               warning_count += 1
+              error = error_messages(result['errors'], [start_line, last_line])
               next if line_check == start_line
               options = { start_line: start_line, line: last_line, side: "RIGHT", start_side: "RIGHT" }
               warn(error, file: file_name, line: line, extras: options, comment: suggestion)
@@ -163,20 +171,6 @@ module Danger
           warn("We found code style issue in your changes please check the suggestion or re-format the code using [Ktlint](https://pinterest.github.io/ktlint/ \"Ktlint Homepage\")")
         end
       end
-    end
-
-    def generate_table(error)
-      table = "<table>
-                <tbody>
-                  <tr>
-                    <td>:warning:</td>
-                    <td width=\"100%\">#{error}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-"
-      table
     end
 
     #Parse git diff of a correction file and return an array of string suggestion code
@@ -234,8 +228,21 @@ module Danger
         else
           unless current_line_number.nil?
             if line.start_with?("+")
+              add_line = 0
+              # added 3 line above
+              # while add_line > 0 do
+              #   number = (current_line_number - add_line)
+              #   added_line_numbers.push number unless added_line_numbers.include? number
+              #   add_line -=1
+              # end
               # added line
               added_line_numbers.push current_line_number
+              # added 3 line below
+              # while add_line < 3 do
+              #   number = (current_line_number + add_line)
+              #   added_line_numbers.push number unless added_line_numbers.include? number
+              #   add_line +=1
+              # end
               current_line_number += 1
             elsif !line.start_with?("-")
               # unmodified line
