@@ -149,7 +149,6 @@ module Danger
               end
               if filtering_lines
                 added_lines = parse_added_line_numbers(git.diff[file_name].patch)
-                # next unless added_lines.include? start_line and added_lines.include? last_line
                 next unless added_lines.include? start_line
               end
               warning_count += 1
@@ -228,21 +227,8 @@ module Danger
         else
           unless current_line_number.nil?
             if line.start_with?("+")
-              add_line = 0
-              # added 3 line above
-              # while add_line > 0 do
-              #   number = (current_line_number - add_line)
-              #   added_line_numbers.push number unless added_line_numbers.include? number
-              #   add_line -=1
-              # end
               # added line
               added_line_numbers.push current_line_number
-              # added 3 line below
-              # while add_line < 3 do
-              #   number = (current_line_number + add_line)
-              #   added_line_numbers.push number unless added_line_numbers.include? number
-              #   add_line +=1
-              # end
               current_line_number += 1
             elsif !line.start_with?("-")
               # unmodified line
