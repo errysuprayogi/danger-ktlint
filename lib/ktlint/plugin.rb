@@ -209,9 +209,6 @@ module Danger
           end
         end
       end
-      changes.each do |result|
-        p result
-      end
       changes
     end
 
